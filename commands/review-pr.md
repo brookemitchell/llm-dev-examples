@@ -19,7 +19,7 @@ You are analyzing PR comments and creating fix commands. Follow these principles
 
 2. **Filter intelligently - skip noise**
 
-   - Ignore already-resolved threads (use GraphQL API to check)
+   - Ignore already-resolved threads (use GitHub CLI to check)
    - Skip outdated comments (code has changed)
    - Don't create actions for simple acknowledgments or questions
    - **WHY**: Noise dilutes signal and wastes time
@@ -41,7 +41,7 @@ You are analyzing PR comments and creating fix commands. Follow these principles
    - **WHY**: Vague commands waste time figuring out what to do
 
 5. **Include thread IDs for automation**
-   - Extract GitHub thread IDs from GraphQL API
+   - Extract GitHub thread IDs from GitHub CLI
    - Include in action commands for mark-as-resolved functionality
    - **WHY**: Enables automated GitHub integration
 
@@ -73,8 +73,8 @@ All reports and action commands will be saved in `.cursor/reviews/` and `.cursor
 
 1. Parse the PR URL from user input
 2. Extract PR number and validate
-3. Use GitHub credentials from `.cursor/credentials/github.json`
-4. Fetch PR comments via GitHub API
+3. Use GitHub CLI (`gh`) for all GitHub operations
+4. Fetch PR comments via GitHub CLI
 5. Create action commands for each actionable comment
 6. Generate comprehensive report
 
@@ -82,34 +82,51 @@ All reports and action commands will be saved in `.cursor/reviews/` and `.cursor
 
 ## 🔐 Prerequisites
 
-### GitHub Credentials Setup
+### GitHub CLI Setup
 
-**File**: `.cursor/credentials/github.json`
+**Required Tool**: GitHub CLI (`gh`)
 
-**Required Structure**:
+**Installation**:
 
-```json
-{
-  "github": {
-    "token": "ghp_your_personal_access_token_here",
-    "username": "your-github-username"
-  }
-}
+- **macOS**: `brew install gh`
+- **Linux**: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+- **Windows**: `winget install --id GitHub.cli` or `choco install gh`
+
+**Authentication**:
+
+After installing, authenticate with GitHub:
+
+```bash
+# Login to GitHub
+gh auth login
+
+# Follow prompts:
+# - Select: GitHub.com
+# - Protocol: HTTPS
+# - Authenticate: Login with web browser (recommended)
 ```
 
-**Token Permissions Required**:
+**Verify Setup**:
 
-- `repo` (Full control of private repositories)
-- `read:discussion` (Read discussions)
+```bash
+# Check authentication status
+gh auth status
 
-**How to Generate Token**:
+# Should show:
+# ✓ Logged in to github.com as <username>
+# ✓ Token: *******************
+```
 
-1. Go to: https://github.com/settings/tokens
-2. Click "Generate new token (classic)"
-3. Select scopes: `repo`, `read:discussion`
-4. Copy token and save to `.cursor/credentials/github.json`
+**Required Permissions**:
 
-⚠️ **IMPORTANT**: The credentials file should NEVER be committed to git. It should be in `.gitignore`.
+The `gh` CLI needs access to:
+- Read repository contents
+- Read PR data and comments
+- Write PR comments (for marking as resolved)
+
+These are typically granted during `gh auth login`.
+
+⚠️ **IMPORTANT**: Run `gh auth login` before using this command.
 
 ---
 
@@ -190,7 +207,7 @@ The PR URL was not provided. The command cannot continue without this required p
 
 The PR URL is necessary to:
 1. ✅ Identify which PR to analyze
-2. ✅ Access comments via GitHub API
+2. ✅ Access comments via GitHub CLI
 3. ✅ Generate action commands specific to the PR
 4. ✅ Mark comments as resolved in the future
 5. ✅ Create correct reports with links to the PR
@@ -219,71 +236,68 @@ Repository: [owner/repo]
 Owner: [owner]
 Repo Name: [repo]
 
-Next Step: Proceed to Pre-Step 1 - Validate Credentials
+Next Step: Proceed to Pre-Step 1 - Validate GitHub CLI
 
 ---
 ```
 
 ---
 
-### Pre-Step 1: Validate Credentials
+### Pre-Step 1: Validate GitHub CLI
 
-**Action**: Check if GitHub credentials exist and are valid.
-
-**File to Check**: `.cursor/credentials/github.json`
+**Action**: Check if GitHub CLI is installed and authenticated.
 
 **🤖 AI Actions (MANDATORY)**:
 
-1. Check if credentials file exists
-2. Parse JSON and extract token
-3. Validate token format (should start with `ghp_` or `github_pat_`)
+1. Check if `gh` CLI is installed
+2. Verify authentication status
+3. Confirm user has access to the repository
 
-**Command**:
+**Commands**:
 
 ```bash
-# Check if credentials file exists
-if [ -f .cursor/credentials/github.json ]; then
-  echo "✅ Credentials file found"
-else
-  echo "❌ Credentials file not found"
-  exit 1
-fi
+# Check if gh is installed
+which gh || echo "❌ GitHub CLI not installed"
 
-# Extract token (requires jq)
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
+# Check authentication status
+gh auth status
 
-if [ -z "$TOKEN" ] || [ "$TOKEN" == "null" ]; then
-  echo "❌ Token not found in credentials"
-  exit 1
-fi
-
-echo "✅ Token loaded successfully"
+# Test access to repository (will use owner/repo from Pre-Step 0)
+gh repo view [owner/repo] --json name
 ```
 
 **Verification Checklist**:
 
-- [ ] Credentials file exists
-- [ ] JSON is valid
-- [ ] Token field exists and not empty
-- [ ] Token format is valid
+- [ ] `gh` CLI is installed
+- [ ] User is authenticated (`gh auth status` shows logged in)
+- [ ] User has access to the target repository
+- [ ] `gh` CLI can fetch repository data
 
 **Completion Criteria**:
 
-- ✅ Credentials validated
-- ⛔ If credentials missing/invalid: Stop and provide setup instructions
+- ✅ GitHub CLI validated and ready
+- ⛔ If gh not installed: Stop and provide installation instructions
+- ⛔ If not authenticated: Stop and provide auth instructions
 
 **🤖 AI Report Output (MANDATORY)**:
 
 ```
-📋 Pre-Step 1 Complete - Credentials Validated
+📋 Pre-Step 1 Complete - GitHub CLI Validated
 
 Status: [✅ Success / ❌ Failed]
 
-Credentials File: .cursor/credentials/github.json
-Token Format: [Valid / Invalid]
-Token Preview: [first 8 chars]...
+GitHub CLI Version: [version from gh --version]
+Authentication: [✅ Authenticated as <username> / ❌ Not authenticated]
+Repository Access: [✅ Can access owner/repo / ❌ No access]
 
-[If failed, show setup instructions]
+[If failed, show setup instructions:]
+To install GitHub CLI:
+- macOS: brew install gh
+- Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+- Windows: winget install --id GitHub.cli
+
+To authenticate:
+gh auth login
 
 Next Step: Proceed to Pre-Step 2 - Cleanup
 
@@ -393,45 +407,39 @@ Next Step: Proceed to Step 1 - Fetch PR Details
 
 ### Step 1: Fetch PR Details
 
-**Action**: Retrieve PR information from GitHub API.
-
-**API Endpoint**: `GET /repos/{owner}/{repo}/pulls/{pull_number}`
+**Action**: Retrieve PR information using GitHub CLI.
 
 **Command**:
 
 ```bash
-# Using curl
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -H "Authorization: token $TOKEN" \
-     -H "Accept: application/vnd.github.v3+json" \
-     https://api.github.com/repos/[owner]/[repo]/pulls/[PR-NUMBER]
+# Fetch PR details using gh CLI
+gh pr view [PR-NUMBER] --repo [owner/repo] --json title,state,author,createdAt,headRefName,baseRefName,body,comments,reviewDecision
 ```
 
-**Expected Response Data**:
+**Expected Response Fields**:
 
 - `title`: PR title
-- `state`: open/closed/merged
-- `user.login`: PR author
-- `created_at`: Creation date
-- `head.ref`: Source branch
-- `base.ref`: Target branch
+- `state`: OPEN/CLOSED/MERGED
+- `author.login`: PR author
+- `createdAt`: Creation date
+- `headRefName`: Source branch
+- `baseRefName`: Target branch
 - `body`: PR description
-- `comments`: Number of comments
-- `review_comments`: Number of review comments
+- `comments`: Comment data
+- `reviewDecision`: APPROVED/CHANGES_REQUESTED/REVIEW_REQUIRED
 
 **Verification Checklist**:
 
-- [ ] API call successful (200 status)
+- [ ] Command executed successfully
 - [ ] PR exists and accessible
 - [ ] Required fields extracted
-- [ ] Token has correct permissions
+- [ ] User has read access to PR
 
 **Completion Criteria**:
 
 - ✅ PR details fetched successfully
-- ⛔ If 404: Stop and report "PR not found"
-- ⛔ If 401/403: Stop and report "Authentication failed"
+- ⛔ If PR not found: Stop and report "PR not found"
+- ⛔ If access denied: Stop and report "Access denied - check gh auth status"
 
 **🤖 AI Report Output (MANDATORY)**:
 
@@ -450,10 +458,7 @@ PR Information:
 - Target Branch: [base-ref]
 - Created: [created-at]
 
-Comments Overview:
-- Issue Comments: [N]
-- Review Comments: [N]
-- Total Comments: [N]
+Review Status: [reviewDecision]
 
 Next Step: Proceed to Step 2 - Fetch Comments
 
@@ -466,98 +471,20 @@ Next Step: Proceed to Step 2 - Fetch Comments
 
 ### Step 2: Fetch All PR Comments
 
-**Action**: Retrieve all comments from the PR (both issue comments and review comments).
+**Action**: Retrieve all comments from the PR using GitHub CLI.
 
-#### 2.1 Fetch Issue Comments
-
-**API Endpoint**: `GET /repos/{owner}/{repo}/issues/{issue_number}/comments`
+#### 2.1 Fetch Review Comments
 
 **Command**:
 
 ```bash
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
+# Fetch all review comments (code-level comments)
+gh pr view [PR-NUMBER] --repo [owner/repo] --json reviews,comments
 
-curl -H "Authorization: token $TOKEN" \
-     -H "Accept: application/vnd.github.v3+json" \
-     https://api.github.com/repos/[owner]/[repo]/issues/[PR-NUMBER]/comments
-```
-
-**Expected Response Data** (array of):
-
-- `id`: Comment ID
-- `user.login`: Comment author
-- `body`: Comment text
-- `created_at`: Creation timestamp
-- `updated_at`: Last update timestamp
-
----
-
-#### 2.2 Fetch Review Comments
-
-**API Endpoint**: `GET /repos/{owner}/{repo}/pulls/{pull_number}/comments`
-
-**Command**:
-
-```bash
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -H "Authorization: token $TOKEN" \
-     -H "Accept: application/vnd.github.v3+json" \
-     https://api.github.com/repos/[owner]/[repo]/pulls/[PR-NUMBER]/comments
-```
-
-**Expected Response Data** (array of):
-
-- `id`: Comment ID
-- `user.login`: Comment author
-- `body`: Comment text
-- `path`: File path (if inline comment)
-- `position`: Line position (if inline comment)
-- `line`: Line number (if inline comment)
-- `created_at`: Creation timestamp
-- `updated_at`: Last update timestamp
-- `in_reply_to_id`: Parent comment ID (if reply)
-- `pull_request_review_id`: Associated review ID
-- **`original_position`**: Original line position (null if outdated)
-- **`side`**: LEFT/RIGHT (null if outdated)
-
----
-
-#### 2.3 Fetch PR Reviews
-
-**API Endpoint**: `GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews`
-
-**Command**:
-
-```bash
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -H "Authorization: token $TOKEN" \
-     -H "Accept: application/vnd.github.v3+json" \
-     https://api.github.com/repos/[owner]/[repo]/pulls/[PR-NUMBER]/reviews
-```
-
-**Expected Response Data** (array of):
-
-- `id`: Review ID
-- `user.login`: Reviewer
-- `body`: Review text
-- `state`: APPROVED/CHANGES_REQUESTED/COMMENTED
-- `submitted_at`: Submission timestamp
-
----
-
-#### 2.4 Fetch Review Threads (GraphQL - for resolved/outdated status)
-
-⚠️ **MANDATORY**: Use GitHub GraphQL API to get accurate resolution and outdated status.
-
-**API Endpoint**: `https://api.github.com/graphql`
-
-**GraphQL Query**:
-
-```graphql
-query ($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) {
+# For more detailed review thread information
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
         nodes {
@@ -585,29 +512,10 @@ query ($owner: String!, $name: String!, $number: Int!) {
       }
     }
   }
-}
+}' -f owner='[owner]' -f repo='[repo]' -F number=[PR-NUMBER]
 ```
 
-**Command**:
-
-```bash
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -X POST \
-  -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated comments(first: 100) { nodes { id databaseId body author { login } createdAt path line } } } pageInfo { hasNextPage endCursor } } } } }",
-    "variables": {
-      "owner": "[owner]",
-      "name": "[repo]",
-      "number": [PR-NUMBER]
-    }
-  }' \
-  https://api.github.com/graphql
-```
-
-**Expected Response**:
+**GraphQL Response Structure**:
 
 ```json
 {
@@ -665,7 +573,7 @@ For each review thread:
 
 **🤖 AI Actions (MANDATORY)**:
 
-1. Execute GraphQL query with PR owner/name/number
+1. Execute GraphQL query via `gh api graphql`
 2. Parse `reviewThreads.nodes` array
 3. For each thread:
    - If `isResolved === true` → Skip thread (add to resolved count)
@@ -673,15 +581,12 @@ For each review thread:
    - If both false → Extract comments for analysis (add to active count)
 4. Build map: `comment.databaseId` → `{threadId, isResolved, isOutdated}`
 5. Store `threadId` for each comment (needed for marking as resolved later)
-6. Use this map to filter REST API comments and enrich with thread IDs
 
 ---
 
 **Verification Checklist**:
 
-- [ ] Issue comments fetched successfully
 - [ ] Review comments fetched successfully
-- [ ] PR reviews fetched successfully
 - [ ] Resolution/outdated status checked
 - [ ] All comment data includes author and body
 - [ ] Inline comments include file/line information
@@ -702,7 +607,6 @@ Output the following report AND append it to the main review file:
 Status: ✅ Success
 
 Comment Types Retrieved:
-- Issue Comments: [N]
 - Review Comments (inline): [N]
 - PR Reviews: [N]
 
@@ -894,7 +798,7 @@ For each actionable comment:
 
 - Only comments with `"status": "active"` should be included in action items
 - `thread_id` is MANDATORY for marking as resolved via GraphQL API
-- Extract `thread_id` from GraphQL response in Step 2.4
+- Extract `thread_id` from GraphQL response in Step 2
 
 ---
 
@@ -1083,20 +987,21 @@ After applying fix:
 
 **Direct Link**: [comment-url]
 
-### Option 2: Automatic (via GraphQL API)
+### Option 2: Automatic (via GitHub CLI)
 
-**Using curl command** (copy-paste ready):
+**Using gh CLI command** (copy-paste ready):
 
 ```bash
-# Mark thread as resolved
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -X POST -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "mutation { resolveReviewThread(input: {threadId: \"[THREAD-ID]\"}) { thread { id isResolved } } }"
-  }' \
-  https://api.github.com/graphql
+# Mark thread as resolved using GitHub CLI
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "[THREAD-ID]"}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}'
 ```
 
 **Thread ID**: `[thread-id]`
@@ -1104,14 +1009,14 @@ curl -X POST -H "Authorization: bearer $TOKEN" \
 **Verification** (optional - check if resolved):
 
 ```bash
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-
-curl -X POST -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "query { node(id: \"[THREAD-ID]\") { ... on PullRequestReviewThread { isResolved } } }"
-  }' \
-  https://api.github.com/graphql
+gh api graphql -f query='
+query {
+  node(id: "[THREAD-ID]") {
+    ... on PullRequestReviewThread {
+      isResolved
+    }
+  }
+}'
 ```
 
 **Expected Response**: `"isResolved": true`
@@ -1176,7 +1081,7 @@ curl -X POST -H "Authorization: bearer $TOKEN" \
 - [ ] Step-by-step fix instructions provided
 - [ ] Severity and category clearly marked
 - [ ] Verification checklist included
-- [ ] "Mark as Resolved" section with both manual and API options
+- [ ] "Mark as Resolved" section with both manual and gh CLI options
 
 **Completion Criteria**:
 - ✅ Action commands created for all actionable comments
@@ -1413,7 +1318,7 @@ Use when there are comments requiring action:
 **After Fixes**:
 
 - Push fixes to PR branch
-- Mark resolved comments on GitHub
+- Mark resolved comments on GitHub (using gh CLI or UI)
 - Request final review from reviewers
 
 ---
@@ -1478,25 +1383,25 @@ END OF PR REVIEW
 - **Cause**: URL format not recognized
 - **Solution**: Ensure URL is in format: `https://github.com/owner/repo/pull/NUMBER`
 
-**Error: Credentials not found**
+**Error: GitHub CLI not installed**
 
-- **Cause**: `.cursor/credentials/github.json` doesn't exist
-- **Solution**: Create credentials file with GitHub token (see Prerequisites)
+- **Cause**: `gh` command not found
+- **Solution**: Install GitHub CLI (see Prerequisites section)
 
-**Error: Authentication failed (401)**
+**Error: Not authenticated**
 
-- **Cause**: Invalid or expired token
-- **Solution**: Generate new GitHub token with correct permissions
+- **Cause**: Not logged in to GitHub via gh CLI
+- **Solution**: Run `gh auth login` and follow prompts
 
 **Error: PR not found (404)**
 
-- **Cause**: PR doesn't exist or repository is private without access
-- **Solution**: Verify PR number and ensure token has access to repository
+- **Cause**: PR doesn't exist or user doesn't have access
+- **Solution**: Verify PR number and repository, check `gh auth status`
 
 **Error: Rate limit exceeded**
 
 - **Cause**: Too many API requests
-- **Solution**: Wait for rate limit to reset (check headers for reset time)
+- **Solution**: Wait for rate limit to reset, GitHub CLI handles this automatically
 
 **Error: No comments found**
 
@@ -1509,15 +1414,15 @@ END OF PR REVIEW
 
 **Before Starting**:
 
-- [ ] GitHub credentials configured in `.cursor/credentials/github.json`
-- [ ] Token has correct permissions (repo, read:discussion)
+- [ ] GitHub CLI installed (`gh --version`)
+- [ ] Authenticated to GitHub (`gh auth status`)
 - [ ] Valid PR URL provided
 - [ ] PR exists and is accessible
 
 **After Pre-Steps**:
 
 - [ ] PR URL parsed successfully
-- [ ] Credentials validated
+- [ ] GitHub CLI validated
 - [ ] Previous reviews cleaned up
 - [ ] Session initialized
 
@@ -1530,9 +1435,8 @@ END OF PR REVIEW
 **After Step 2**:
 
 - [ ] All comment types fetched
-- [ ] Issue comments retrieved
 - [ ] Review comments retrieved
-- [ ] PR reviews retrieved
+- [ ] Resolved/outdated status checked
 
 **After Step 3**:
 
@@ -1560,28 +1464,39 @@ END OF PR REVIEW
 
 ### Pagination for Large PRs
 
-**Note**: The GraphQL query in Step 2.4 uses `first: 100` which limits results to 100 threads/comments.
+**Note**: The GraphQL query uses `first: 100` which limits results to 100 threads/comments.
 
 For PRs with more than 100 review threads, implement pagination:
 
 ```bash
-# Check pageInfo.hasNextPage
-# If true, make another request with:
-# after: "endCursor_value"
-
-# Example second page:
-curl -X POST -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100, after: $after) { nodes { id isResolved isOutdated comments(first: 100) { nodes { databaseId body author { login } path line } } } pageInfo { hasNextPage endCursor } } } } }",
-    "variables": {
-      "owner": "owner",
-      "name": "repo",
-      "number": 582,
-      "after": "Y3Vyc29yOnYyOpK5..."
+# Example with pagination
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          comments(first: 100) {
+            nodes {
+              databaseId
+              body
+              author { login }
+              path
+              line
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
     }
-  }' \
-  https://api.github.com/graphql
+  }
+}' -f owner="owner" -f repo="repo" -F number=582 -f after="cursor_value"
 ```
 
 **🤖 AI Implementation**:
@@ -1593,45 +1508,6 @@ curl -X POST -H "Authorization: bearer $TOKEN" \
 
 ---
 
-### Optional Enhancements
-
-**Auto-link to Files**:
-
-- For inline comments, provide direct links to file locations
-- Use format: `[file]:[line]`
-
-**Comment Threading**:
-
-- Group related comments together
-- Show reply chains
-- Identify resolved vs unresolved threads
-
-**Reviewer Statistics**:
-
-- Track review patterns
-- Show most active reviewers
-- Highlight blocking reviewers
-
-**Historical Tracking**:
-
-- Keep history of all PR reviews
-- Track fix completion rates
-- Show trend over time
-
-**Integration with BUGBOT**:
-
-- Cross-reference with BUGBOT checklist
-- Identify if comments match existing rules
-- Suggest preventive measures
-
-**Smart Re-run Detection**:
-
-- Track which action commands have been executed
-- Skip creating duplicate action commands
-- Show "Already addressed" status for completed items
-
----
-
 ## Notes
 
 - This workflow is designed to be executed by AI assistance
@@ -1640,9 +1516,8 @@ curl -X POST -H "Authorization: bearer $TOKEN" \
 - Document all findings thoroughly
 - Prioritize critical issues
 - Always provide direct links to comments
-- Respect GitHub API rate limits
-- Keep credentials secure and never commit them
-- **IMPORTANT**: This workflow uses GraphQL API exclusively for resolved/outdated detection
+- GitHub CLI handles authentication and rate limiting automatically
+- **IMPORTANT**: This workflow uses GitHub CLI for all GitHub operations
 - Always filter out resolved and outdated comments to avoid duplicate action items
 - Re-running the command on the same PR will skip already resolved comments
 - GraphQL API provides 100% accurate `isResolved` and `isOutdated` flags

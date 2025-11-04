@@ -72,15 +72,16 @@ You are executing fixes for PR review comments. Follow these principles througho
 - **⚠️ Action commands are AUTOMATICALLY DELETED after processing (cleanup is mandatory)**
 - Timestamp format: `YYYYMMDD-HHMMSS` (e.g., `20251014-153045`)
 
-**🤖 AI Instructions (MANDATORY)**: 0. **VALIDATE PR URL** - Parse PR URL from user input and extract PR number (REQUIRED - stop if missing)
+**🤖 AI Instructions (MANDATORY)**:
 
+0. **VALIDATE PR URL** - Parse PR URL from user input and extract PR number (REQUIRED - stop if missing)
 1. **CLEANUP OLD FIX LOGS** - Delete all previous fix reports and logs for THIS PR number using `delete_file` tool
 2. Scan `.cursor/commands/` for all `action-pr-[PR-NUMBER]-*.md` files
 3. **IF NO ACTION COMMANDS FOUND**: Auto-execute `/review-my-pr [PR-URL]` first, then retry scan
 4. Parse each action command file to extract fix requirements
 5. Apply fixes to code files
 6. Verify changes (linting, compilation)
-7. Mark comments as resolved on GitHub via GraphQL API
+7. Mark comments as resolved on GitHub via GitHub CLI
 8. Generate comprehensive execution report
 9. **⚠️ CLEANUP ACTION COMMANDS (CRITICAL)**: DELETE all processed action command files using `delete_file` tool - THIS STEP IS MANDATORY AND MUST NOT BE SKIPPED
 
@@ -88,25 +89,49 @@ You are executing fixes for PR review comments. Follow these principles througho
 
 ## 🔐 Prerequisites
 
-### GitHub Credentials Setup
+### GitHub CLI Setup
 
-**File**: `.cursor/credentials/github.json`
+**Required Tool**: GitHub CLI (`gh`)
 
-**Required Structure**:
+**Installation**:
 
-```json
-{
-  "github": {
-    "token": "ghp_your_personal_access_token_here",
-    "username": "your-github-username"
-  }
-}
+- **macOS**: `brew install gh`
+- **Linux**: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+- **Windows**: `winget install --id GitHub.cli` or `choco install gh`
+
+**Authentication**:
+
+After installing, authenticate with GitHub:
+
+```bash
+# Login to GitHub
+gh auth login
+
+# Follow prompts:
+# - Select: GitHub.com
+# - Protocol: HTTPS
+# - Authenticate: Login with web browser (recommended)
 ```
 
-**Token Permissions Required**:
+**Verify Setup**:
 
-- `repo` (Full control of private repositories)
-- `write:discussion` (Write discussions - REQUIRED for marking as resolved)
+```bash
+# Check authentication status
+gh auth status
+
+# Should show:
+# ✓ Logged in to github.com as <username>
+# ✓ Token: *******************
+```
+
+**Required Permissions**:
+
+The `gh` CLI needs access to:
+- Read repository contents
+- Read PR data and comments
+- Write PR comments (for marking as resolved)
+
+These are typically granted during `gh auth login`.
 
 ⚠️ **IMPORTANT**: Token MUST have write permissions to mark comments as resolved.
 
@@ -362,7 +387,7 @@ Report File: .cursor/fixes/fix-report-pr-[PR-NUMBER]-[timestamp].md
 Timestamp: [timestamp]
 PR Number: [N]
 
-Next Step: Proceed to Pre-Step 3 - Validate Credentials
+Next Step: Proceed to Pre-Step 3 - Validate GitHub CLI
 
 ---
 ```
@@ -371,62 +396,61 @@ Next Step: Proceed to Pre-Step 3 - Validate Credentials
 
 ---
 
-### Pre-Step 3: Validate Credentials
+### Pre-Step 3: Validate GitHub CLI
 
-**Action**: Check if GitHub credentials exist and have write permissions.
-
-**File to Check**: `.cursor/credentials/github.json`
+**Action**: Check if GitHub CLI is installed and authenticated with write permissions.
 
 **🤖 AI Actions (MANDATORY)**:
 
-1. Check if credentials file exists
-2. Parse JSON and extract token
-3. Validate token format (should start with `ghp_` or `github_pat_`)
-4. Test token permissions with a simple API call
+1. Check if `gh` CLI is installed
+2. Verify authentication status
+3. Test write permissions with a simple API call
 
-**Command**:
+**Commands**:
 
 ```bash
-# Check credentials and test write permissions
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
+# Check if gh is installed
+which gh || echo "❌ GitHub CLI not installed"
 
-if [ -z "$TOKEN" ] || [ "$TOKEN" == "null" ]; then
-  echo "❌ Token not found in credentials"
-  exit 1
-fi
+# Check authentication status
+gh auth status
 
-# Test token with GitHub API
-curl -H "Authorization: token $TOKEN" \
-     -H "Accept: application/vnd.github.v3+json" \
-     https://api.github.com/user
+# Refresh auth token to ensure it's valid
+gh auth refresh -h github.com
 ```
 
 **Verification Checklist**:
 
-- [ ] Credentials file exists
-- [ ] JSON is valid
-- [ ] Token field exists and not empty
-- [ ] Token format is valid
-- [ ] Token has correct permissions (write access)
+- [ ] `gh` CLI is installed
+- [ ] User is authenticated
+- [ ] Token is valid
+- [ ] Token has write permissions
 
 **Completion Criteria**:
 
-- ✅ Credentials validated
-- ⛔ If credentials missing/invalid: Stop and provide setup instructions
+- ✅ GitHub CLI validated and ready
+- ⛔ If gh not installed: Stop and provide installation instructions
+- ⛔ If not authenticated: Stop and provide auth instructions
 
 **🤖 AI Report Output (MANDATORY)**:
 
 ```
-📋 Pre-Step 3 Complete - Credentials Validated
+📋 Pre-Step 3 Complete - GitHub CLI Validated
 
 Status: [✅ Success / ❌ Failed]
 
-Credentials File: .cursor/credentials/github.json
-Token Format: [Valid / Invalid]
-Token Preview: [first 8 chars]...
+GitHub CLI Version: [version]
+Authentication: [✅ Authenticated as <username> / ❌ Not authenticated]
 Write Permissions: [✅ Confirmed / ❌ Missing]
 
-[If failed, show setup instructions]
+[If failed, show setup instructions:]
+To install GitHub CLI:
+- macOS: brew install gh
+- Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+- Windows: winget install --id GitHub.cli
+
+To authenticate:
+gh auth login
 
 Next Step: Proceed to Step 1 - Scan Action Commands
 
@@ -444,7 +468,7 @@ Next Step: Proceed to Step 1 - Scan Action Commands
 **🤖 AI Actions (MANDATORY)**:
 
 1. Scan `.cursor/commands/` directory
-2. Find all files matching pattern: `action-pr-*.md`
+2. Find all files matching pattern: `action-pr-[PR-NUMBER]-*.md`
 3. Parse each file to extract:
    - PR Number
    - Comment Number
@@ -461,11 +485,11 @@ Next Step: Proceed to Step 1 - Scan Action Commands
 **Commands**:
 
 ```bash
-# Find all action command files
-ls -1 .cursor/commands/action-pr-*.md 2>/dev/null | sort
+# Find all action command files for this PR
+ls -1 .cursor/commands/action-pr-[PR-NUMBER]-*.md 2>/dev/null | sort
 
 # Count action commands
-ls -1 .cursor/commands/action-pr-*.md 2>/dev/null | wc -l
+ls -1 .cursor/commands/action-pr-[PR-NUMBER]-*.md 2>/dev/null | wc -l
 ```
 
 **Action Command Parse Structure**:
@@ -892,45 +916,32 @@ npx eslint [file-path]
 
 #### 2.5 Mark Comment as Resolved on GitHub
 
-**Action**: Mark the GitHub comment thread as resolved using GraphQL API.
+**Action**: Mark the GitHub comment thread as resolved using GitHub CLI.
 
 ⚠️ **CRITICAL**: This step is MANDATORY and must succeed before moving to next action.
 
 **🤖 AI Actions (MANDATORY)**:
 
 1. Extract Thread ID from action command (parsed in step 2.1)
-2. Load GitHub token from credentials
-3. Execute GraphQL mutation to mark thread as resolved
-4. Verify mutation succeeded
-5. Confirm thread is now resolved
+2. Execute GraphQL mutation via GitHub CLI to mark thread as resolved
+3. Verify mutation succeeded
+4. Confirm thread is now resolved
 
-**GraphQL Mutation**:
+**GraphQL Mutation via gh CLI**:
 
-```graphql
+```bash
+# Mark thread as resolved using GitHub CLI
+THREAD_ID="[THREAD-ID-FROM-ACTION-COMMAND]"
+
+gh api graphql -f query='
 mutation {
-  resolveReviewThread(input: { threadId: "[THREAD-ID]" }) {
+  resolveReviewThread(input: {threadId: "'$THREAD_ID'"}) {
     thread {
       id
       isResolved
     }
   }
-}
-```
-
-**Command**:
-
-```bash
-# Mark thread as resolved
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-THREAD_ID="[THREAD-ID-FROM-ACTION-COMMAND]"
-
-curl -X POST \
-  -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"query\": \"mutation { resolveReviewThread(input: {threadId: \\\"$THREAD_ID\\\"}) { thread { id isResolved } } }\"
-  }" \
-  https://api.github.com/graphql
+}'
 ```
 
 **Expected Response**:
@@ -952,22 +963,20 @@ curl -X POST \
 
 ```bash
 # Verify thread is resolved
-TOKEN=$(cat .cursor/credentials/github.json | jq -r '.github.token')
-THREAD_ID="[THREAD-ID]"
-
-curl -X POST \
-  -H "Authorization: bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"query\": \"query { node(id: \\\"$THREAD_ID\\\") { ... on PullRequestReviewThread { isResolved } } }\"
-  }" \
-  https://api.github.com/graphql
+gh api graphql -f query='
+query {
+  node(id: "'$THREAD_ID'") {
+    ... on PullRequestReviewThread {
+      isResolved
+    }
+  }
+}'
 ```
 
 **Verification Checklist**:
 
 - [ ] Thread ID extracted correctly
-- [ ] GraphQL mutation executed
+- [ ] GraphQL mutation executed via gh CLI
 - [ ] Response received (200 status)
 - [ ] Response contains "isResolved": true
 - [ ] No errors in response
@@ -980,7 +989,7 @@ curl -X POST \
 
 **Error Handling**:
 
-- If 401/403: Token lacks permissions
+- If 401/403: Token lacks permissions (run `gh auth refresh`)
 - If 404: Thread ID not found (may be outdated)
 - If 422: Invalid input (check thread ID format)
 - If 500: GitHub API error (retry after delay)
@@ -1206,17 +1215,22 @@ FOR EACH action command in execution plan (sorted by severity):
 6. Execute Step 2.6 - Log Fix Execution
 7. Execute Step 2.7 - Update Progress
 
-IF any step fails critically: - Document failure in fix log - Mark as "needs manual review" - Update progress report - CONTINUE to next action (don't stop entire process)
+IF any step fails critically:
+  - Document failure in fix log
+  - Mark as "needs manual review"
+  - Update progress report
+  - CONTINUE to next action (don't stop entire process)
 
-IF all steps succeed: - Mark action as completed - Move to next action
+IF all steps succeed:
+  - Mark action as completed
+  - Move to next action
 
 END FOR
 
 AFTER all actions processed:
+  - Proceed to Step 3 - Final Report
 
-- Proceed to Step 3 - Final Report
-
-````
+```
 
 **Important Notes**:
 - Process actions sequentially (one at a time)
@@ -1370,10 +1384,9 @@ Total issues: [N]
 1. **Review Changes**: Check modified files for correctness
    ```bash
    git diff
-````
+   ```
 
 2. **Run Tests**: Execute test suite to ensure nothing broke
-
    ```bash
    npm test
    # or
@@ -1385,13 +1398,12 @@ Total issues: [N]
    npm run build
    ```
 
-[If any manual resolutions needed] 4. **Resolve Remaining Comments**: Manually resolve [N] comments on GitHub
-
-- [Link to comment 1]
-- [Link to comment 2]
+[If any manual resolutions needed]
+4. **Resolve Remaining Comments**: Manually resolve [N] comments on GitHub
+   - [Link to comment 1]
+   - [Link to comment 2]
 
 ### Follow-Up Actions
-
 - [ ] Verify PR build passes on CI/CD
 - [ ] Request re-review from reviewers
 - [ ] Respond to any remaining questions in PR comments
@@ -1401,14 +1413,12 @@ Total issues: [N]
 ## 📊 Statistics
 
 **Code Changes**:
-
 - Lines added: [estimated]
 - Lines modified: [estimated]
 - Lines removed: [estimated]
 - Files modified: [N]
 
 **Execution Metrics**:
-
 - Total execution time: [duration]
 - Average time per fix: [time]
 - API calls made: [N]
@@ -1421,7 +1431,6 @@ Total issues: [N]
 - 📝 **PR URL**: [pr-url]
 - 📊 **Full Fix Report**: `.cursor/fixes/fix-report-pr-[PR-NUMBER]-[timestamp].md`
 - 📋 **Fix Logs**: `.cursor/fixes/fix-log-pr-[PR-NUMBER]-comment-*-[timestamp].md`
-- 🛠️ **Processed Actions**: `.cursor/commands/action-pr-[PR-NUMBER]-comment-*-[timestamp].md`
 
 ---
 
@@ -1445,7 +1454,6 @@ Please review the detailed logs and address failed actions manually.
 ═══════════════════════════════════════════════════════════════
 END OF FIX EXECUTION
 ═══════════════════════════════════════════════════════════════
-
 ```
 
 **🤖 AI Actions (MANDATORY)**:
@@ -1481,14 +1489,11 @@ END OF FIX EXECUTION
 
 **Example - Delete each action file**:
 ```
-
 For each action command file found in Step 1:
-
-- Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-1-20251014-153045.md")
-- Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-2-20251014-153045.md")
-- Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-N-20251014-153045.md")
-- Continue until ALL action-pr-[PR-NUMBER]-\*.md files are deleted
-
+  - Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-1-20251014-153045.md")
+  - Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-2-20251014-153045.md")
+  - Use: delete_file(target_file=".cursor/commands/action-pr-582-comment-N-20251014-153045.md")
+  - Continue until ALL action-pr-[PR-NUMBER]-*.md files are deleted
 ```
 
 **How to Delete**:
@@ -1504,36 +1509,6 @@ For each action command file found in Step 1:
 - ✅ Verify successful deletion
 - ℹ️ Fix logs are preserved in `.cursor/fixes/` for audit trail
 - ℹ️ Review reports preserved in `.cursor/reviews/` for history
-
-**Step-by-Step Deletion Process (MANDATORY)**:
-
-```
-
-STEP 1: Recall all action files from Step 1 scan
-Example list from Step 1:
-
-- .cursor/commands/action-pr-582-comment-1-20251014-172727.md
-- .cursor/commands/action-pr-582-comment-2-20251014-172727.md
-- .cursor/commands/action-pr-582-comment-3-20251014-172727.md
-
-STEP 2: For EACH file in the list, call delete_file tool
-delete_file(target_file=".cursor/commands/action-pr-582-comment-1-20251014-172727.md")
-delete_file(target_file=".cursor/commands/action-pr-582-comment-2-20251014-172727.md")
-delete_file(target_file=".cursor/commands/action-pr-582-comment-3-20251014-172727.md")
-
-STEP 3: Verify each deletion
-
-- Check that delete_file succeeded for each file
-- If any deletion failed, report the error
-- Confirm that ALL files were deleted, not just some
-
-STEP 4: Report cleanup results
-
-- List each file that was deleted
-- Confirm total count matches original count from Step 1
-- Display cleanup complete message to user
-
-```
 
 **Verification Checklist**:
 - [ ] All action command files for this PR identified
@@ -1555,7 +1530,6 @@ STEP 4: Report cleanup results
 Append to main fix report:
 
 ```
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 Step 4 Complete - Action Commands Cleanup
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1565,7 +1539,6 @@ Status: ✅ Success
 Action Commands Removed: [N]
 
 Files Cleaned:
-
 - action-pr-[PR-NUMBER]-comment-1-[timestamp].md ✅ Removed
 - action-pr-[PR-NUMBER]-comment-2-[timestamp].md ✅ Removed
 - action-pr-[PR-NUMBER]-comment-N-[timestamp].md ✅ Removed
@@ -1573,7 +1546,6 @@ Files Cleaned:
 Total: [N] action command files removed
 
 Preserved Files:
-
 - ✅ Fix logs in .cursor/fixes/ (kept for audit trail)
 - ✅ Review reports in .cursor/reviews/ (kept for history)
 - ✅ Other command files (fix-my-pr.md, review-my-pr.md, etc.)
@@ -1589,18 +1561,15 @@ SESSION COMPLETE
 All fixes have been applied, verified, and cleaned up.
 
 Next Steps:
-
 1. Review changes: git diff
 2. Run tests: npm test
 
 ---
-
 ```
 
 **Display to user (MANDATORY)**:
 
 ```
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧹 CLEANUP COMPLETE - ACTION COMMANDS DELETED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1622,8 +1591,7 @@ Run: /fix-my-pr [PR-URL]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ FIX-MY-PR WORKFLOW COMPLETE ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-````
+```
 
 ⚠️ **IMPORTANT**: Verify that you actually deleted the files. Do NOT just say you did - actually use the `delete_file` tool for each action command file.
 
@@ -1666,7 +1634,7 @@ Run: /fix-my-pr [PR-URL]
 
 **Error: Failed to mark as resolved (401/403)**
 - **Cause**: Token lacks write permissions
-- **Solution**: Update GitHub token with `write:discussion` permission
+- **Solution**: Run `gh auth refresh -h github.com` to refresh token
 
 **Error: Failed to mark as resolved (404)**
 - **Cause**: Thread ID not found or outdated
@@ -1690,133 +1658,6 @@ Run: /fix-my-pr [PR-URL]
 
 ---
 
-## Execution Strategy
-
-### Sequential Processing
-**Why**: Ensures each fix is properly applied and verified before moving to next
-- Process one action at a time
-- Verify completely before moving forward
-- Don't skip critical steps (especially marking as resolved)
-
-### Failure Handling
-**Approach**: Continue on failure, don't stop entire process
-- Log failures comprehensively
-- Mark for manual review
-- Continue with remaining actions
-- Report all failures at end
-
-### Verification Priority
-**Critical Verifications** (must pass):
-1. Code syntax is valid
-2. TypeScript compilation succeeds
-3. No critical linting errors
-4. Comment marked as resolved on GitHub
-
-**Secondary Verifications** (best effort):
-1. Code style matches existing patterns
-2. All edge cases handled
-3. Performance is acceptable
-
-## Advanced Features
-
-### Smart Fix Application
-
-**Code Analysis**:
-- Understand context before applying fix
-- Check for similar patterns in file
-- Update related code if necessary
-- Maintain consistency with codebase
-
-**Import Management**:
-- Add missing imports automatically
-- Remove unused imports
-- Organize imports properly
-- Update import paths if needed
-
-**Type Safety**:
-- Infer correct types
-- Add type annotations if missing
-- Fix type errors
-- Maintain type safety
-
-### Intelligent Verification
-
-**Pre-Flight Checks**:
-- Read file before modification
-- Understand current implementation
-- Plan changes carefully
-- Anticipate side effects
-
-**Post-Fix Validation**:
-- Verify fix matches requirements
-- Check for unintended changes
-- Validate all imports work
-- Ensure no new errors introduced
-
-### GitHub Integration
-
-**Thread Resolution**:
-- Extract Thread ID from action command
-- Use GraphQL API to mark as resolved
-- Verify resolution succeeded
-- Retry on temporary failures (max 3 attempts)
-
-**Error Recovery**:
-- Handle API rate limits
-- Retry on network errors
-- Fallback to manual resolution if necessary
-- Document all resolution attempts
-
----
-
-## Integration with Review Workflow
-
-### Complete PR Fix Workflow
-
-**Single Command Execution**:
-```bash
-/fix-my-pr https://github.com/owner/repo/pull/582
-````
-
-**What happens automatically**:
-
-- Auto-executes `/review-my-pr` if no action commands exist
-- Applies all fixes to code
-- Verifies changes (linting, compilation)
-- Marks comments as resolved on GitHub
-- Cleans up action command files
-- Generates detailed reports
-
-**Optional**: Generate action commands manually first
-
-```bash
-/review-my-pr https://github.com/owner/repo/pull/582
-/fix-my-pr https://github.com/owner/repo/pull/582
-```
-
-### Iterative Workflow
-
-**Scenario**: Reviewer adds new comments after initial fixes
-
-**Process**:
-
-1. Run `/fix-my-pr [PR-URL]` again
-2. Auto-executes `/review-my-pr` (skips already resolved comments)
-3. New action commands created only for new comments
-4. Processes and cleans up new actions automatically
-5. Repeat as needed
-
-**Benefits**:
-
-- Only process unresolved comments
-- Avoid duplicate fixes (old actions auto-removed)
-- Iterative improvement cycle
-- Clean PR review history
-- Clean workspace (no leftover action commands)
-- Single command does everything
-
----
-
 ## Notes
 
 - **PR URL is REQUIRED** - command will fail if not provided
@@ -1826,7 +1667,7 @@ Run: /fix-my-pr [PR-URL]
 - Each fix is applied, verified, and validated before marking as resolved
 - Failures in one fix don't stop the entire process
 - All actions are logged for audit and debugging
-- GitHub comments are marked as resolved automatically
+- GitHub comments are marked as resolved automatically using GitHub CLI
 - **Action commands are automatically removed after successful processing**
 - Manual intervention may be needed for complex cases
 - Always review changes thoroughly
@@ -1834,6 +1675,7 @@ Run: /fix-my-pr [PR-URL]
 - Re-running is safe - already resolved comments are skipped by `/review-my-pr`
 - **CRITICAL**: Thread IDs must be present in action commands for marking as resolved
 - Cleanup ensures workspace stays clean for iterative workflows
+- GitHub CLI handles all authentication and API interactions
 
 ---
 
